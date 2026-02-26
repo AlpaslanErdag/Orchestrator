@@ -1,0 +1,21 @@
+local-agent-platform/
+├── app/
+│   ├── __init__.py
+│   ├── main.py              # FastAPI Uygulama Girişi
+│   ├── engine/              # Ajanın Karar Döngüsü (Reasoning Loop)
+│   │   ├── __init__.py
+│   │   └── orchestrator.py  # Ajanları yöneten beyin
+│   ├── models/              # Veritabanı Modelleri (SQLAlchemy)
+│   │   ├── __init__.py
+│   │   └── agent_models.py
+│   └── services/            # İş mantığı (Database CRUD işlemleri)
+├── tools/                   # Ajanların kullanabileceği araçlar
+│   ├── __init__.py
+│   ├── base.py              # Tool şablonu
+│   └── pdf_tool.py          # İlk Agent Tool'umuz burada olacak
+├── db/                      # SQLite veritabanı dosyası
+├── ui/                      # Frontend (HTML/Tailwind/JS)
+│   ├── templates/
+│   └── static/
+├── requirements.txt
+└── .env                     # API Key ve Port ayarları

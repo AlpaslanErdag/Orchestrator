@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.env
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.git/
+.gitignore
+.DS_Store
+
+# Runtime artefacts (volume-mounted at runtime)
+agentflow.db
+reports/
+uploads/
+
+# Docs / dev files
+*.md
+ROADMAP.md
+master_architect.md
+folder_construct

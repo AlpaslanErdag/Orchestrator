@@ -1,0 +1,1479 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <title>AgentFlow Local</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/drawflow@0.0.47/dist/drawflow.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/drawflow@0.0.47/dist/drawflow.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            background: "#060b18",
+            surface:    "#0d1526",
+            border:     "#1e2d45",
+          },
+          fontFamily: {
+            mono: ["'JetBrains Mono'", "ui-monospace", "monospace"],
+          },
+        },
+      },
+    };
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" />
+  <style>
+    /* ── Drawflow canvas dark skin ── */
+    .drawflow { background-color: #060b18 !important; }
+    .drawflow .drawflow-node {
+      background: #0d1526;
+      border: 1px solid #1e2d45;
+      border-radius: 10px;
+      color: #e2e8f0;
+      font-size: 11px;
+      min-width: 140px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    .drawflow .drawflow-node.selected { border-color: #10b981; box-shadow: 0 0 0 2px rgba(16,185,129,0.2); }
+    /* ── Ports (input/output circles) ── */
+    .drawflow .drawflow-node .input,
+    .drawflow .drawflow-node .output {
+      width: 14px;
+      height: 14px;
+      background: #1e2d45;
+      border: 2px solid #334155;
+      border-radius: 50%;
+      cursor: crosshair;
+      transition: background 0.15s, border-color 0.15s, transform 0.15s;
+    }
+    .drawflow .drawflow-node .input:hover,
+    .drawflow .drawflow-node .output:hover {
+      background: #10b981;
+      border-color: #10b981;
+      transform: scale(1.3);
+    }
+    /* ── Connection lines ── */
+    .drawflow .connection .main-path {
+      stroke: #334155;
+      stroke-width: 2.5px;
+      stroke-dasharray: none;
+    }
+    .drawflow .connection .main-path:hover { stroke: #10b981; stroke-width: 3px; }
+    /* Grid dots */
+    .drawflow { background-image: radial-gradient(#1e2d45 1px, transparent 0); background-size: 24px 24px; }
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #1e2d45; border-radius: 9999px; }
+    /* Blinking cursor for terminal */
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+    .cursor-blink { animation: blink 1s step-end infinite; }
+    /* Terminal line glow effects */
+    .log-thought     { color:#38bdf8; text-shadow: 0 0 8px rgba(56,189,248,.25); }
+    .log-action      { color:#fbbf24; text-shadow: 0 0 8px rgba(251,191,36,.25); }
+    .log-observation { color:#34d399; text-shadow: 0 0 8px rgba(52,211,153,.25); }
+    .log-final       { color:#c084fc; text-shadow: 0 0 8px rgba(192,132,252,.25); }
+    .log-error       { color:#f87171; text-shadow: 0 0 8px rgba(248,113,113,.3); }
+    .log-done        { color:#475569; }
+    .log-system      { color:#475569; font-style: italic; }
+    /* Line number gutter */
+    .log-lineno { min-width:2rem; text-align:right; color:#1e2d45; font-size:9px; user-select:none; padding-right:8px; padding-top:1px; }
+    /* Stage pills */
+    .stage-pill { color:#334155; border-color:#1e2d45; font-weight:600; letter-spacing:.04em; }
+    .stage-pill.active  { color:#10b981; border-color:#10b981; text-shadow:0 0 6px rgba(16,185,129,.4); }
+    .stage-pill.done-ok { color:#334155; border-color:#1e2d45; }
+    /* Output panel table */
+    .out-table { border-collapse:collapse; width:100%; font-size:10px; }
+    .out-table th { background:#0d1526; color:#94a3b8; padding:3px 8px; text-align:left; border-bottom:1px solid #1e2d45; }
+    .out-table td { padding:3px 8px; border-bottom:1px solid #0d1526; color:#cbd5e1; vertical-align:top; }
+    .out-table tr:last-child td { border-bottom:none; }
+    .out-table tr:hover td { background:#0d1526; }
+    /* Node type colour badges */
+    .node-badge { display:inline-block; padding:1px 6px; border-radius:4px; font-size:9px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; }
+    .node-badge-source  { background:rgba(59,130,246,.2); color:#93c5fd; }
+    .node-badge-tool    { background:rgba(245,158,11,.2); color:#fcd34d; }
+    .node-badge-agent   { background:rgba(16,185,129,.2); color:#6ee7b7; }
+    .node-badge-output  { background:rgba(168,85,247,.2); color:#d8b4fe; }
+    /* Per-type node accent border */
+    .drawflow .df-node-source  { border-color: #3b82f6 !important; }
+    .drawflow .df-node-tool    { border-color: #f59e0b !important; }
+    .drawflow .df-node-agent   { border-color: #10b981 !important; }
+    .drawflow .df-node-output  { border-color: #a855f7 !important; }
+    .drawflow .df-node-source.selected { box-shadow:0 0 0 2px rgba(59,130,246,.3); }
+    .drawflow .df-node-tool.selected   { box-shadow:0 0 0 2px rgba(245,158,11,.3); }
+    .drawflow .df-node-agent.selected  { box-shadow:0 0 0 2px rgba(16,185,129,.3); }
+    .drawflow .df-node-output.selected { box-shadow:0 0 0 2px rgba(168,85,247,.3); }
+  </style>
+</head>
+
+<body class="h-full bg-[#060b18] text-slate-100 overflow-hidden">
+<div class="h-screen flex">
+
+  <!-- ═══════════════════════════════ SIDEBAR ═══════════════════════════════ -->
+  <aside class="w-60 flex flex-col border-r border-[#1e2d45] bg-[#080f1e] shrink-0">
+
+    <!-- Brand -->
+    <div class="px-4 pt-5 pb-4 border-b border-[#1e2d45]">
+      <div class="flex items-center gap-2.5 mb-1">
+        <div class="w-7 h-7 rounded-md bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
+          <svg class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+        </div>
+        <span class="text-sm font-semibold tracking-tight">AgentFlow Local</span>
+      </div>
+      <p class="text-[10px] text-slate-500 pl-9">Diplomatic AI Orchestration</p>
+    </div>
+
+    <!-- Navigation -->
+    <div class="px-3 py-3 border-b border-[#1e2d45] flex gap-2">
+      <button id="sidebarChatLink"
+        class="flex-1 flex items-center justify-center gap-1.5 text-[11px] font-medium py-1.5 rounded-md bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 transition-all">
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+        </svg>
+        Chat
+      </button>
+      <button id="sidebarWorkflowsLink"
+        class="flex-1 flex items-center justify-center gap-1.5 text-[11px] font-medium py-1.5 rounded-md bg-transparent text-slate-400 border border-[#1e2d45] hover:border-slate-600 hover:text-slate-200 transition-all">
+        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/>
+        </svg>
+        Workflows
+      </button>
+    </div>
+
+    <!-- Agents heading + New button -->
+    <div class="px-3 pt-3 pb-1 flex items-center justify-between">
+      <span class="text-[10px] uppercase tracking-widest text-slate-500">Agents</span>
+      <button id="createAgentBtn"
+        class="flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border border-emerald-500/30 transition-colors">
+        <span>＋</span> New
+      </button>
+    </div>
+
+    <!-- Agent list -->
+    <nav id="agentList" class="flex-1 overflow-y-auto px-2 pb-3 space-y-0.5 mt-1"></nav>
+
+    <!-- Footer -->
+    <div class="px-4 py-3 border-t border-[#1e2d45]">
+      <p class="text-[10px] text-slate-600">Powered by Ollama · local-only</p>
+    </div>
+  </aside>
+
+  <!-- ═══════════════════════════════  MAIN  ════════════════════════════════ -->
+  <main class="flex-1 flex flex-col min-w-0">
+
+    <!-- Top Bar -->
+    <header class="h-12 border-b border-[#1e2d45] flex items-center justify-between px-5 bg-[#080f1e] shrink-0">
+      <div class="flex items-center gap-3 min-w-0">
+        <div id="agentIndicator" class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></div>
+        <div class="min-w-0">
+          <p id="activeAgentName" class="text-sm font-medium leading-none truncate">Select an agent</p>
+          <p id="activeAgentRole" class="text-[11px] text-slate-500 leading-none mt-0.5 truncate"></p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <button id="downloadReportBtn"
+          class="hidden items-center gap-1.5 px-3 py-1.5 rounded-md border border-emerald-500/50 text-emerald-300 text-[11px] font-medium hover:bg-emerald-500/10 transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          Download Report
+        </button>
+      </div>
+    </header>
+
+    <!-- ── CHAT VIEW ── -->
+    <div id="chatView" class="flex-1 flex flex-col min-h-0">
+      <section id="chatArea" class="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+        <!-- welcome state -->
+        <div id="chatPlaceholder" class="flex flex-col items-center justify-center h-full text-center py-16">
+          <div class="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-4">
+            <svg class="w-6 h-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+          </div>
+          <p class="text-slate-300 font-medium mb-1">Select an agent and send a task</p>
+          <p class="text-slate-500 text-sm max-w-xs">Agents can generate PDFs, scrape the web, translate, analyse images, and more — autonomously.</p>
+        </div>
+      </section>
+
+      <!-- Input -->
+      <section class="border-t border-[#1e2d45] px-4 py-3 bg-[#080f1e] shrink-0">
+        <form id="taskForm">
+          <div class="flex gap-2 items-end">
+            <div class="flex-1 flex flex-col gap-1.5">
+              <textarea id="promptInput" rows="2"
+                placeholder="Describe the task for the selected agent…"
+                class="w-full resize-none bg-[#0d1526] border border-[#1e2d45] rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"></textarea>
+              <div class="flex items-center gap-3 text-[11px] text-slate-500">
+                <label class="flex items-center gap-1.5 cursor-pointer hover:text-slate-300 transition-colors">
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
+                  </svg>
+                  <span id="imageLabel">Attach image</span>
+                  <input id="imageInput" type="file" accept="image/*" class="hidden" />
+                </label>
+                <span class="text-slate-700">·</span>
+                <span>For vision-enabled agents like <span class="text-emerald-500">Görsel Yorumlayıcı</span></span>
+              </div>
+            </div>
+            <button type="submit"
+              class="shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-medium text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+              </svg>
+              Send
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <!-- ── WORKFLOW VIEW ── -->
+    <div id="workflowView" class="hidden flex-1 flex min-h-0">
+
+      <!-- Palette -->
+      <div class="w-52 border-r border-[#1e2d45] bg-[#080f1e] flex flex-col shrink-0">
+        <div class="px-3 py-3 border-b border-[#1e2d45]">
+          <p class="text-[10px] uppercase tracking-widest text-slate-500">Node Palette</p>
+          <p class="text-[10px] text-slate-600 mt-0.5">Drag nodes onto the canvas</p>
+        </div>
+        <div class="flex-1 overflow-y-auto px-3 py-3 space-y-4 text-[11px]">
+
+          <div>
+            <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Triggers</p>
+            <div class="df-node-palette-item group flex items-center gap-2 px-2.5 py-2 rounded-md bg-[#0d1526] hover:bg-blue-500/10 border border-[#1e2d45] hover:border-blue-500/40 cursor-grab text-slate-300 hover:text-blue-300 transition-all mb-1"
+              data-node-type="source" data-node-key="url_input">
+              <span class="text-base">🌐</span> URL Input
+            </div>
+            <div class="cs-node flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-[#0d1526]/40 border border-dashed border-[#1e2d45]/60 cursor-not-allowed text-slate-700 mb-1 text-[10px]" title="Coming soon">
+              <span class="opacity-30">⏰</span> Schedule <span class="ml-auto text-[9px] text-slate-800 bg-slate-800/60 rounded px-1">soon</span>
+            </div>
+            <div class="cs-node flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-[#0d1526]/40 border border-dashed border-[#1e2d45]/60 cursor-not-allowed text-slate-700 mb-1 text-[10px]" title="Coming soon">
+              <span class="opacity-30">🔗</span> Webhook <span class="ml-auto text-[9px] text-slate-800 bg-slate-800/60 rounded px-1">soon</span>
+            </div>
+          </div>
+
+          <div>
+            <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Actions</p>
+            <div class="df-node-palette-item group flex items-center gap-2 px-2.5 py-2 rounded-md bg-[#0d1526] hover:bg-amber-500/10 border border-[#1e2d45] hover:border-amber-500/40 cursor-grab text-slate-300 hover:text-amber-300 transition-all mb-1"
+              data-node-type="tool" data-node-key="web_scraper">
+              <span class="text-base">🕷️</span> Web Scraper
+            </div>
+            <div class="df-node-palette-item group flex items-center gap-2 px-2.5 py-2 rounded-md bg-[#0d1526] hover:bg-amber-500/10 border border-[#1e2d45] hover:border-amber-500/40 cursor-grab text-slate-300 hover:text-amber-300 transition-all mb-1"
+              data-node-type="tool" data-node-key="email_sender">
+              <span class="text-base">📧</span> Email Sender
+            </div>
+            <div class="df-node-palette-item group flex items-center gap-2 px-2.5 py-2 rounded-md bg-[#0d1526] hover:bg-amber-500/10 border border-[#1e2d45] hover:border-amber-500/40 cursor-grab text-slate-300 hover:text-amber-300 transition-all mb-1"
+              data-node-type="tool" data-node-key="pdf_report">
+              <span class="text-base">📄</span> PDF Report
+            </div>
+            <div class="cs-node flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-[#0d1526]/40 border border-dashed border-[#1e2d45]/60 cursor-not-allowed text-slate-700 mb-1 text-[10px]" title="Coming soon">
+              <span class="opacity-30">🔀</span> Conditional Branch <span class="ml-auto text-[9px] text-slate-800 bg-slate-800/60 rounded px-1">soon</span>
+            </div>
+            <div class="cs-node flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-[#0d1526]/40 border border-dashed border-[#1e2d45]/60 cursor-not-allowed text-slate-700 mb-1 text-[10px]" title="Coming soon">
+              <span class="opacity-30">🗃️</span> Database Query <span class="ml-auto text-[9px] text-slate-800 bg-slate-800/60 rounded px-1">soon</span>
+            </div>
+            <div class="cs-node flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-[#0d1526]/40 border border-dashed border-[#1e2d45]/60 cursor-not-allowed text-slate-700 mb-1 text-[10px]" title="Coming soon">
+              <span class="opacity-30">📁</span> File Upload <span class="ml-auto text-[9px] text-slate-800 bg-slate-800/60 rounded px-1">soon</span>
+            </div>
+          </div>
+
+          <div>
+            <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Agents</p>
+            <div id="agentNodesPalette" class="space-y-1"></div>
+            <div class="cs-node flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-[#0d1526]/40 border border-dashed border-[#1e2d45]/60 cursor-not-allowed text-slate-700 mt-1 text-[10px]" title="Coming soon">
+              <span class="opacity-30">⛓️</span> LLM Chain <span class="ml-auto text-[9px] text-slate-800 bg-slate-800/60 rounded px-1">soon</span>
+            </div>
+            <div class="cs-node flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-[#0d1526]/40 border border-dashed border-[#1e2d45]/60 cursor-not-allowed text-slate-700 mt-1 text-[10px]" title="Coming soon">
+              <span class="opacity-30">🧠</span> Memory Store <span class="ml-auto text-[9px] text-slate-800 bg-slate-800/60 rounded px-1">soon</span>
+            </div>
+          </div>
+
+          <div>
+            <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Outputs</p>
+            <div class="df-node-palette-item group flex items-center gap-2 px-2.5 py-2 rounded-md bg-[#0d1526] hover:bg-purple-500/10 border border-[#1e2d45] hover:border-purple-500/40 cursor-grab text-slate-300 hover:text-purple-300 transition-all mb-1"
+              data-node-type="output" data-node-key="display_result">
+              <span class="text-base">📊</span> Display Result
+            </div>
+            <div class="cs-node flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-[#0d1526]/40 border border-dashed border-[#1e2d45]/60 cursor-not-allowed text-slate-700 mb-1 text-[10px]" title="Coming soon">
+              <span class="opacity-30">📈</span> Chart Visualizer <span class="ml-auto text-[9px] text-slate-800 bg-slate-800/60 rounded px-1">soon</span>
+            </div>
+            <div class="cs-node flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-[#0d1526]/40 border border-dashed border-[#1e2d45]/60 cursor-not-allowed text-slate-700 text-[10px]" title="Coming soon">
+              <span class="opacity-30">💾</span> Save to Disk <span class="ml-auto text-[9px] text-slate-800 bg-slate-800/60 rounded px-1">soon</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Canvas area -->
+      <div class="flex-1 relative bg-[#060b18] min-w-0 flex flex-col">
+
+        <!-- Toolbar row -->
+        <div class="shrink-0 border-b border-[#1e2d45] bg-[#080f1e] px-3 py-2 flex items-center gap-2 flex-wrap">
+          <input id="workflowUrlInput" type="text"
+            class="w-64 bg-[#0d1526] border border-[#1e2d45] rounded-lg px-3 py-1.5 text-[11px] text-slate-200 placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            placeholder="https://example.com (URL trigger)" />
+          <button id="runWorkflowBtn"
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-[11px] font-semibold text-white transition-colors">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 3l14 9-14 9V3z"/>
+            </svg>
+            Run Workflow
+          </button>
+          <button id="loadExampleBtn"
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/30 hover:bg-blue-600/50 border border-blue-500/30 text-[11px] font-medium text-blue-300 transition-colors">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            Load Example
+          </button>
+          <button id="clearCanvasBtn"
+            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-transparent border border-[#1e2d45] text-[11px] text-slate-500 hover:text-slate-300 hover:border-slate-600 transition-colors ml-auto">
+            Clear Canvas
+          </button>
+        </div>
+
+        <!-- Connection hint banner -->
+        <div id="connectionHint"
+          class="shrink-0 flex items-center gap-3 px-4 py-2 bg-amber-500/5 border-b border-amber-500/10 text-[11px] text-amber-300/70">
+          <svg class="w-4 h-4 shrink-0 text-amber-400/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <span>
+            <strong class="text-amber-300/90">Drag</strong> nodes from the palette ·
+            <strong class="text-amber-300/90">Connect</strong> nodes by dragging from a node's
+            <span class="inline-flex items-center gap-1">right <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500/60 border border-emerald-400/60 align-middle"></span> output port</span>
+            to another node's
+            <span class="inline-flex items-center gap-1">left <span class="inline-block w-2.5 h-2.5 rounded-full bg-[#1e2d45] border border-slate-500/60 align-middle"></span> input port</span> ·
+            <strong class="text-amber-300/90">Delete</strong> a selected node with <kbd class="text-[10px] bg-slate-800 border border-slate-700 rounded px-1">Del</kbd>
+          </span>
+          <button onclick="document.getElementById('connectionHint').remove()" class="ml-auto text-slate-600 hover:text-slate-400 shrink-0">✕</button>
+        </div>
+
+        <!-- Drawflow canvas -->
+        <div id="workflowCanvas" class="flex-1"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ═══════════════════════════  PROCESS MONITOR  ════════════════════════ -->
+  <aside class="w-[400px] flex flex-col border-l border-[#1e2d45] bg-[#04080f] font-mono shrink-0">
+
+    <!-- Terminal chrome bar -->
+    <div class="h-10 border-b border-[#1e2d45] flex items-center px-3 gap-2 shrink-0 bg-[#060b18]">
+      <div class="flex gap-1.5 shrink-0">
+        <span class="w-3 h-3 rounded-full bg-[#ff5f57] shadow-[0_0_4px_#ff5f57aa]"></span>
+        <span class="w-3 h-3 rounded-full bg-[#febc2e] shadow-[0_0_4px_#febc2eaa]"></span>
+        <span class="w-3 h-3 rounded-full bg-[#28c840] shadow-[0_0_4px_#28c840aa]"></span>
+      </div>
+      <div class="flex-1 text-center">
+        <span class="text-[10px] text-slate-500 tracking-widest uppercase">Process Monitor</span>
+      </div>
+      <button id="clearMonitorBtn"
+        class="shrink-0 text-[10px] text-slate-600 hover:text-slate-300 border border-[#1e2d45] hover:border-slate-600 rounded px-2 py-0.5 transition-colors">
+        CLR
+      </button>
+    </div>
+
+    <!-- Stage pipeline indicator -->
+    <div class="shrink-0 px-3 py-2 border-b border-[#1e2d45] bg-[#060b18]">
+      <div class="flex items-center gap-1 text-[9px]">
+        <div class="stage-pill flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all" id="stage-init">
+          <span class="w-1.5 h-1.5 rounded-full bg-current"></span> INIT
+        </div>
+        <div class="flex-1 h-px bg-[#1e2d45]"></div>
+        <div class="stage-pill flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all" id="stage-thinking">
+          <span class="w-1.5 h-1.5 rounded-full bg-current"></span> THINKING
+        </div>
+        <div class="flex-1 h-px bg-[#1e2d45]"></div>
+        <div class="stage-pill flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all" id="stage-acting">
+          <span class="w-1.5 h-1.5 rounded-full bg-current"></span> ACTING
+        </div>
+        <div class="flex-1 h-px bg-[#1e2d45]"></div>
+        <div class="stage-pill flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all" id="stage-observing">
+          <span class="w-1.5 h-1.5 rounded-full bg-current"></span> OBS
+        </div>
+        <div class="flex-1 h-px bg-[#1e2d45]"></div>
+        <div class="stage-pill flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all" id="stage-done">
+          <span class="w-1.5 h-1.5 rounded-full bg-current"></span> DONE
+        </div>
+      </div>
+      <!-- Progress bar -->
+      <div class="mt-2 h-0.5 w-full bg-[#1e2d45] rounded-full overflow-hidden">
+        <div id="monitorProgress" class="h-full bg-emerald-500 rounded-full transition-all duration-500" style="width:0%"></div>
+      </div>
+    </div>
+
+    <!-- Prompt line -->
+    <div class="px-3 py-1.5 border-b border-[#0d1526] bg-[#04080f] shrink-0">
+      <span class="text-[10px] text-emerald-500/50">agentflow@local</span>
+      <span class="text-[10px] text-slate-700">:</span>
+      <span class="text-[10px] text-blue-400/50">~/orchestrator</span>
+      <span class="text-[10px] text-slate-500">$</span>
+      <span id="monitorPromptText" class="text-[10px] text-slate-500 ml-1 italic">waiting for task…</span>
+    </div>
+
+    <!-- Stream body -->
+    <div id="thoughtStream"
+      class="flex-1 overflow-y-auto px-2 py-2 space-y-px text-[11px] leading-relaxed bg-[#04080f]">
+      <div class="flex gap-0 items-start px-1 py-0.5">
+        <span class="shrink-0 w-6 text-slate-700 text-[10px] pt-px select-none mr-2">1</span>
+        <span class="shrink-0 text-[10px] text-slate-600 w-[68px] text-right mr-3 pt-px">[SYS]</span>
+        <span class="text-slate-600 italic">Awaiting task execution<span class="cursor-blink">▌</span></span>
+      </div>
+    </div>
+
+    <!-- Output visualisation panel (hidden until workflow emits display_result) -->
+    <div id="outputPanel" class="hidden shrink-0 max-h-48 overflow-y-auto border-t border-[#1e2d45] bg-[#060b18]">
+      <div class="flex items-center justify-between px-3 py-1.5 border-b border-[#1e2d45]">
+        <span class="text-[10px] font-semibold text-purple-300 tracking-wide">📊 Display Output</span>
+        <button onclick="document.getElementById('outputPanel').classList.add('hidden')"
+          class="text-[10px] text-slate-600 hover:text-slate-300">✕</button>
+      </div>
+      <div id="outputPanelBody" class="px-3 py-2 text-[11px]"></div>
+    </div>
+
+    <!-- Legend bar -->
+    <div class="border-t border-[#1e2d45] px-3 py-1.5 flex items-center gap-3 shrink-0 bg-[#060b18] flex-wrap">
+      <span class="text-[9px] text-sky-400/70">● THOUGHT</span>
+      <span class="text-[9px] text-amber-400/70">● ACTION</span>
+      <span class="text-[9px] text-emerald-400/70">● OBS</span>
+      <span class="text-[9px] text-purple-400/70">● FINAL</span>
+      <span class="text-[9px] text-red-400/70">● ERROR</span>
+    </div>
+
+    <!-- Status bar -->
+    <div class="h-7 border-t border-[#1e2d45] px-3 flex items-center gap-2 shrink-0 bg-[#060b18]">
+      <span class="w-1.5 h-1.5 rounded-full bg-slate-600" id="statusDot"></span>
+      <span id="monitorStatus" class="text-[10px] text-slate-600 flex-1">idle</span>
+      <span id="monitorSteps"  class="text-[10px] text-slate-700"></span>
+    </div>
+  </aside>
+
+</div>
+
+<!-- ═══════════════════════ TOAST CONTAINER ══════════════════════════════ -->
+<div id="toastContainer" class="fixed bottom-5 right-5 space-y-2 z-50 pointer-events-none"></div>
+
+  <!-- ═══════════════════  CREATE / EDIT AGENT MODAL  ══════════════════════ -->
+<div id="agentModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+  <div class="bg-[#0d1526] border border-[#1e2d45] rounded-xl w-full max-w-lg shadow-2xl">
+    <!-- Modal header -->
+    <div class="flex items-start justify-between px-5 py-4 border-b border-[#1e2d45]">
+      <div>
+        <p id="agentModalTitle" class="text-sm font-semibold text-slate-100">Create New Agent</p>
+        <p id="agentModalSubtitle" class="text-[11px] text-slate-500 mt-0.5">Configure a specialized Ollama-backed autonomous agent.</p>
+      </div>
+      <button id="agentModalClose" class="text-slate-500 hover:text-slate-200 transition-colors p-1 -mr-1 -mt-1">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <!-- Form -->
+    <form id="agentModalForm" class="px-5 py-4 space-y-3">
+      <input type="hidden" id="agentEditId" value="" />
+      <div class="grid grid-cols-2 gap-3">
+        <div class="space-y-1">
+          <label for="agentName" class="block text-[11px] font-medium text-slate-400">Agent Name *</label>
+          <input id="agentName" type="text"
+            class="w-full bg-[#060b18] border border-[#1e2d45] rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-600"
+            placeholder="Legal Advisor" required />
+        </div>
+        <div class="space-y-1">
+          <label for="agentRole" class="block text-[11px] font-medium text-slate-400">Role *</label>
+          <input id="agentRole" type="text"
+            class="w-full bg-[#060b18] border border-[#1e2d45] rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-600"
+            placeholder="Researcher, Çevirmen…" required />
+        </div>
+      </div>
+      <div class="space-y-1">
+        <label for="agentModel" class="block text-[11px] font-medium text-slate-400">Ollama Model *</label>
+        <select id="agentModel"
+          class="w-full bg-[#060b18] border border-[#1e2d45] rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+          <option value="mistral:7b">mistral:7b — general reasoning</option>
+          <option value="llama3.2-vision:11b">llama3.2-vision:11b — vision analysis</option>
+        </select>
+      </div>
+      <div class="space-y-1">
+        <label for="agentBackstory" class="block text-[11px] font-medium text-slate-400">Role Description</label>
+        <textarea id="agentBackstory" rows="2"
+          class="w-full bg-[#060b18] border border-[#1e2d45] rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-600 resize-none"
+          placeholder="Short description of this agent's domain expertise."></textarea>
+      </div>
+      <div class="space-y-1">
+        <label for="agentInstructions" class="block text-[11px] font-medium text-slate-400">System Instructions</label>
+        <textarea id="agentInstructions" rows="3"
+          class="w-full bg-[#060b18] border border-[#1e2d45] rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder:text-slate-600 resize-none"
+          placeholder="e.g. 'Always scrape https://techcrunch.com and summarise top headlines in Turkish.'"></textarea>
+      </div>
+      <div class="space-y-2">
+        <p class="text-[11px] font-medium text-slate-400">Tools</p>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="flex items-center gap-2 text-[11px] text-slate-300 cursor-pointer">
+            <input type="checkbox" name="agentTools" value="pdf_report_tool"
+              class="rounded border-slate-600 bg-[#060b18] text-emerald-500 focus:ring-emerald-500" checked />
+            📄 PDF Report Tool
+          </label>
+          <label class="flex items-center gap-2 text-[11px] text-slate-300 cursor-pointer">
+            <input type="checkbox" name="agentTools" value="vision_analysis_tool"
+              class="rounded border-slate-600 bg-[#060b18] text-emerald-500 focus:ring-emerald-500" />
+            👁️ Vision Analysis
+          </label>
+          <label class="flex items-center gap-2 text-[11px] text-slate-300 cursor-pointer">
+            <input type="checkbox" name="agentTools" value="web_scraper_tool"
+              class="rounded border-slate-600 bg-[#060b18] text-emerald-500 focus:ring-emerald-500" />
+            🕷️ Web Scraper
+          </label>
+          <label class="flex items-center gap-2 text-[11px] text-slate-300 cursor-pointer">
+            <input type="checkbox" name="agentTools" value="send_email"
+              class="rounded border-slate-600 bg-[#060b18] text-emerald-500 focus:ring-emerald-500" />
+            📧 Email Sender
+          </label>
+        </div>
+      </div>
+      <div class="flex items-center justify-between pt-1">
+        <!-- Delete button (only shown in edit mode) -->
+        <button type="button" id="agentDeleteBtn"
+          class="hidden px-3 py-1.5 text-xs rounded-lg border border-red-800/50 text-red-400 hover:bg-red-900/20 transition-colors">
+          🗑 Delete Agent
+        </button>
+        <div class="flex gap-2 ml-auto">
+          <button type="button" id="agentModalCancelBtn"
+            class="px-3 py-1.5 text-xs rounded-lg border border-[#1e2d45] text-slate-300 hover:bg-[#1e2d45] transition-colors">
+            Cancel
+          </button>
+          <button type="submit" id="agentModalSubmitBtn"
+            class="px-4 py-1.5 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-colors">
+            Create Agent
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════  SCRIPT  ══════════════════════════════ -->
+<script>
+  "use strict";
+  const apiBase = "";
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let agents          = [];
+  let selectedAgentId = null;
+  let selectedAgentMeta = null;
+  let lastArtifactPath  = null;
+  let selectedImageFile = null;
+  let availableModels   = [];
+  let workflowEditor    = null;
+  let _monitorStep      = 0;
+
+  // ── DOM refs (all resolved after DOMContentLoaded) ─────────────────────────
+  let agentListEl, activeAgentNameEl, activeAgentRoleEl, chatAreaEl,
+      chatPlaceholderEl, thoughtStreamEl, monitorStatusEl, monitorStepsEl,
+      statusDotEl, clearMonitorBtnEl, promptInputEl, taskFormEl,
+      createAgentBtnEl, toastContainerEl, downloadReportBtnEl, imageInputEl,
+      imageLabelEl, agentModalEl, agentModalFormEl, agentModalCloseEl,
+      agentModalCancelBtnEl, agentModalTitleEl, agentModalSubtitleEl,
+      agentModalSubmitBtnEl, agentDeleteBtnEl, agentEditIdEl,
+      agentNameInputEl, agentRoleInputEl, agentModelInputEl,
+      agentBackstoryInputEl, agentInstructionsInputEl,
+      toolCheckboxes, sidebarChatLinkEl, sidebarWorkflowsLinkEl,
+      chatViewEl, workflowViewEl, workflowCanvasEl, agentNodesPaletteEl,
+      workflowUrlInputEl, runWorkflowBtnEl;
+
+  // ── Terminal event styling ──────────────────────────────────────────────────
+  const EVT = {
+    thought:     { tag: "THOUGHT", cls: "log-thought"     },
+    action:      { tag: "ACTION",  cls: "log-action"      },
+    observation: { tag: "OBS",     cls: "log-observation" },
+    final:       { tag: "FINAL",   cls: "log-final"       },
+    error:       { tag: "ERROR",   cls: "log-error"       },
+    done:        { tag: "DONE",    cls: "log-done"        },
+    system:      { tag: "SYS",     cls: "log-system"      },
+  };
+  let _lineCount = 1;
+
+  // ── Toast ──────────────────────────────────────────────────────────────────
+  function showToast(msg, type = "info") {
+    const bg = type === "success" ? "bg-emerald-700/90"
+             : type === "error"   ? "bg-red-700/90"
+             :                      "bg-slate-800/90";
+    const el = document.createElement("div");
+    el.className = `pointer-events-auto ${bg} text-xs text-white px-3 py-2 rounded-lg shadow-lg border border-white/10 flex items-center justify-between gap-3`;
+    el.innerHTML = `<span>${msg}</span><button class="opacity-60 hover:opacity-100 text-[10px]">✕</button>`;
+    el.querySelector("button").onclick = () => el.remove();
+    toastContainerEl.appendChild(el);
+    setTimeout(() => el.remove(), 4500);
+  }
+
+  // ── Monitor ────────────────────────────────────────────────────────────────
+  let monitorPromptTextEl, monitorProgressEl, outputPanelEl, outputPanelBodyEl;
+
+  // ── Stage pipeline ──────────────────────────────────────────────────────────
+  const STAGES = ["init","thinking","acting","observing","done"];
+  let _currentStageIdx = -1;
+
+  function setStage(name) {
+    const idx = STAGES.indexOf(name);
+    if (idx < 0) return;
+    _currentStageIdx = idx;
+    STAGES.forEach((s, i) => {
+      const el = document.getElementById(`stage-${s}`);
+      if (!el) return;
+      el.classList.remove("active", "done-ok");
+      if (i === idx) el.classList.add("active");
+      else if (i < idx) el.classList.add("done-ok");
+    });
+    // Progress bar: 0→100 across stages
+    const pct = Math.round((idx / (STAGES.length - 1)) * 100);
+    if (monitorProgressEl) monitorProgressEl.style.width = pct + "%";
+    // Progress bar colour
+    if (monitorProgressEl) {
+      monitorProgressEl.className = `h-full rounded-full transition-all duration-500 ${
+        name === "done"      ? "bg-emerald-500" :
+        name === "acting"    ? "bg-amber-400"   :
+        name === "observing" ? "bg-sky-400"      : "bg-blue-500"
+      }`;
+    }
+  }
+
+  function resetStages() {
+    _currentStageIdx = -1;
+    STAGES.forEach(s => {
+      const el = document.getElementById(`stage-${s}`);
+      if (el) el.classList.remove("active","done-ok");
+    });
+    if (monitorProgressEl) { monitorProgressEl.style.width = "0%"; }
+  }
+
+  function setMonitorStatus(state) {
+    const map = {
+      idle:      { label: "idle",      dot: "bg-slate-600",              prompt: "waiting for task…",  stage: null        },
+      running:   { label: "running…",  dot: "bg-amber-400 animate-pulse",prompt: "executing task…",    stage: "init"      },
+      completed: { label: "completed", dot: "bg-emerald-500",             prompt: "task complete ✓",    stage: "done"      },
+      error:     { label: "error",     dot: "bg-red-500",                 prompt: "task failed ✗",      stage: null        },
+    };
+    const s = map[state] || map.idle;
+    monitorStatusEl.textContent = s.label;
+    statusDotEl.className = `w-1.5 h-1.5 rounded-full ${s.dot}`;
+    if (monitorPromptTextEl) monitorPromptTextEl.textContent = s.prompt;
+    if (s.stage) setStage(s.stage);
+    if (state === "idle" || state === "error") resetStages();
+    if (monitorProgressEl && state === "error") {
+      monitorProgressEl.className = "h-full rounded-full transition-all duration-500 bg-red-500";
+    }
+  }
+
+  // ── Output panel (Display Result node) ────────────────────────────────────
+  function renderOutputPanel(data) {
+    if (!outputPanelEl || !outputPanelBodyEl) return;
+    outputPanelBodyEl.innerHTML = "";
+
+    // Detect if data looks like a table (lines with | separators)
+    const lines = String(data).split("\n").filter(l => l.trim());
+    const tableLines = lines.filter(l => l.includes("|"));
+
+    if (tableLines.length >= 2) {
+      // Render as HTML table
+      const table = document.createElement("table");
+      table.className = "out-table";
+      tableLines.forEach((line, i) => {
+        // Skip separator rows (e.g. |---|---|)
+        if (/^\s*[\|:\-\s]+$/.test(line)) return;
+        const cells = line.split("|").map(c => c.trim()).filter(c => c !== "");
+        const tr = document.createElement("tr");
+        cells.forEach(cell => {
+          const td = document.createElement(i === 0 ? "th" : "td");
+          td.textContent = cell;
+          tr.appendChild(td);
+        });
+        table.appendChild(tr);
+      });
+      outputPanelBodyEl.appendChild(table);
+    } else {
+      // Try JSON pretty-print
+      let rendered = false;
+      try {
+        const obj = JSON.parse(data);
+        const pre = document.createElement("pre");
+        pre.className = "text-emerald-400/80 text-[10px] whitespace-pre-wrap";
+        pre.textContent = JSON.stringify(obj, null, 2);
+        outputPanelBodyEl.appendChild(pre);
+        rendered = true;
+      } catch {}
+
+      if (!rendered) {
+        // Plain text with markdown-bold support
+        const pre = document.createElement("div");
+        pre.className = "text-slate-300 text-[11px] whitespace-pre-wrap leading-relaxed";
+        // Bold **text** → <strong>
+        pre.innerHTML = String(data)
+          .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+          .replace(/\*\*(.+?)\*\*/g,"<strong class='text-white'>$1</strong>")
+          .replace(/^#{1,3} (.+)$/gm,"<div class='text-purple-300 font-semibold mt-2'>$1</div>");
+        outputPanelBodyEl.appendChild(pre);
+      }
+    }
+
+    // If a PDF path is embedded, add download button
+    const pdfMatch = String(data).match(/reports\/[^\s"']+\.pdf/);
+    if (pdfMatch) {
+      const btn = document.createElement("button");
+      btn.className = "mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/50 text-emerald-300 text-[11px] hover:bg-emerald-500/10 transition-colors";
+      btn.innerHTML = `<svg class='w-3.5 h-3.5' fill='none' viewBox='0 0 24 24' stroke='currentColor' stroke-width='2'><path stroke-linecap='round' stroke-linejoin='round' d='M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4'/></svg> Download PDF`;
+      btn.onclick = () => window.open(`${apiBase}/api/reports/download?path=${encodeURIComponent(pdfMatch[0])}`, "_blank");
+      outputPanelBodyEl.appendChild(btn);
+    }
+
+    outputPanelEl.classList.remove("hidden");
+  }
+
+  function clearMonitor() {
+    thoughtStreamEl.innerHTML = "";
+    _monitorStep = 0;
+    _lineCount   = 1;
+    monitorStepsEl.textContent = "";
+    resetStages();
+    if (outputPanelEl) outputPanelEl.classList.add("hidden");
+    appendMonitorLine("system", "Monitor cleared.");
+  }
+
+  function appendMonitorLine(evtType, text) {
+    const s     = EVT[evtType] || EVT.system;
+    const lines = String(text).split("\n");
+
+    lines.forEach((line, i) => {
+      if (!line.trim() && i > 0) return; // skip blank continuation lines
+
+      const row = document.createElement("div");
+      row.className = "flex items-start px-1 py-0.5 hover:bg-white/[0.02] rounded group";
+
+      // Line number
+      const lineno = document.createElement("span");
+      lineno.className = "log-lineno shrink-0";
+      lineno.textContent = _lineCount++;
+
+      // Event badge
+      const badge = document.createElement("span");
+      badge.className = `shrink-0 w-[68px] text-right text-[10px] mr-3 pt-px ${s.cls} opacity-60`;
+      badge.textContent = i === 0 ? `[${s.tag}]` : "";
+
+      // Content
+      const body = document.createElement("span");
+      body.className = `flex-1 break-all ${s.cls}`;
+      body.textContent = line || "\u00a0";
+
+      row.appendChild(lineno);
+      row.appendChild(badge);
+      row.appendChild(body);
+      thoughtStreamEl.appendChild(row);
+    });
+    thoughtStreamEl.scrollTop = thoughtStreamEl.scrollHeight;
+  }
+
+  // Legacy alias for workflow runner
+  function appendThoughtLine(text) { appendMonitorLine("system", text); }
+
+  // ── Agent sidebar rendering ────────────────────────────────────────────────
+  function renderAgents() {
+    agentListEl.innerHTML = "";
+    if (!agents.length) {
+      const el = document.createElement("p");
+      el.className = "text-[11px] text-slate-600 px-3 py-2";
+      el.textContent = "No agents yet — click ＋ New.";
+      agentListEl.appendChild(el);
+      return;
+    }
+    agents.forEach((a) => {
+      const active = a.id === selectedAgentId;
+      const wrap = document.createElement("div");
+      wrap.className = `relative group flex items-center gap-1 rounded-lg border transition-all
+        ${active
+          ? "bg-emerald-500/10 border-emerald-500/30"
+          : "border-transparent hover:bg-white/5 hover:border-[#1e2d45]"}`;
+
+      const btn = document.createElement("button");
+      btn.className = "flex-1 text-left px-3 py-2 min-w-0";
+      btn.innerHTML = `
+        <p class="font-medium text-[12px] truncate ${active ? "text-slate-100" : "text-slate-400 group-hover:text-slate-200"}">${a.name}</p>
+        <p class="text-[10px] opacity-50 truncate">${a.role || ""}</p>`;
+      btn.onclick = () => selectAgent(a.id);
+
+      // Edit button (appears on hover)
+      const editBtn = document.createElement("button");
+      editBtn.className = "shrink-0 mr-2 p-1 text-slate-600 hover:text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity rounded";
+      editBtn.title = "Edit agent";
+      editBtn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+      </svg>`;
+      editBtn.onclick = (e) => { e.stopPropagation(); openEditModal(a.id); };
+
+      wrap.appendChild(btn);
+      wrap.appendChild(editBtn);
+      agentListEl.appendChild(wrap);
+    });
+  }
+
+  function renderAgentPalette() {
+    if (!agentNodesPaletteEl) return;
+    agentNodesPaletteEl.innerHTML = "";
+    agents.forEach((a) => {
+      const div = document.createElement("div");
+      div.className = "df-node-palette-item flex items-center gap-2 px-2.5 py-2 rounded-md bg-[#0d1526] hover:bg-emerald-500/10 border border-[#1e2d45] hover:border-emerald-500/40 cursor-grab text-slate-300 hover:text-emerald-300 transition-all text-[11px]";
+      div.dataset.nodeType = "agent";
+      div.dataset.nodeKey  = "agent";
+      div.dataset.agentId  = a.id;
+      div.innerHTML = `<span>🤖</span> ${a.name}`;
+      agentNodesPaletteEl.appendChild(div);
+    });
+    // Re-wire drag events if workflow editor is already open
+    if (workflowEditor) bindPaletteDrag();
+  }
+
+  // ── Agent loading ──────────────────────────────────────────────────────────
+  async function loadAgents() {
+    try {
+      const res = await fetch(apiBase + "/api/agents");
+      if (!res.ok) throw new Error("Agents fetch failed");
+      agents = await res.json();
+      if (agents.length && !selectedAgentId) {
+        selectedAgentId   = agents[0].id;
+        selectedAgentMeta = agents[0];
+      }
+      updateAgentHeader();
+      renderAgents();
+      renderAgentPalette();
+    } catch (e) {
+      console.error(e);
+      showToast("Could not fetch agents from backend.", "error");
+    }
+  }
+
+  async function loadModels() {
+    try {
+      const res = await fetch(apiBase + "/api/models");
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      availableModels = data.models || [];
+      if (availableModels.length && agentModelInputEl) {
+        agentModelInputEl.innerHTML = "";
+        availableModels.forEach((m) => {
+          const opt = document.createElement("option");
+          opt.value = m; opt.textContent = m;
+          agentModelInputEl.appendChild(opt);
+        });
+      }
+    } catch {
+      showToast("Could not load Ollama models — using defaults.", "error");
+    }
+  }
+
+  function updateAgentHeader() {
+    if (!selectedAgentMeta) {
+      activeAgentNameEl.textContent = "Select an agent";
+      activeAgentRoleEl.textContent  = "";
+      return;
+    }
+    activeAgentNameEl.textContent = selectedAgentMeta.name;
+    activeAgentRoleEl.textContent  = selectedAgentMeta.role || "";
+  }
+
+  function selectAgent(id) {
+    const a = agents.find((x) => x.id === id);
+    if (!a) return;
+    selectedAgentId   = id;
+    selectedAgentMeta = a;
+    updateAgentHeader();
+    renderAgents();
+    showToast(`Active agent: ${a.name}`, "info");
+  }
+
+  // ── Chat ───────────────────────────────────────────────────────────────────
+  function appendChatBubble(role, text) {
+    if (chatPlaceholderEl) chatPlaceholderEl.remove();
+    chatPlaceholderEl = null;
+
+    const wrap = document.createElement("div");
+    const isUser = role === "user";
+    wrap.className = `flex ${isUser ? "justify-end" : "justify-start"}`;
+
+    const bubble = document.createElement("div");
+    bubble.className = `max-w-[78%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed shadow-md
+      ${isUser
+        ? "bg-emerald-600 text-white rounded-br-sm"
+        : "bg-[#0d1526] text-slate-100 border border-[#1e2d45] rounded-bl-sm"}`;
+    bubble.innerText = text;
+    wrap.appendChild(bubble);
+    chatAreaEl.appendChild(wrap);
+    chatAreaEl.scrollTop = chatAreaEl.scrollHeight;
+  }
+
+  // ── Image upload ───────────────────────────────────────────────────────────
+  async function uploadImageIfNeeded() {
+    if (!selectedImageFile) return null;
+    const fd = new FormData();
+    fd.append("file", selectedImageFile);
+    const res = await fetch(apiBase + "/api/upload-image", { method: "POST", body: fd });
+    if (!res.ok) throw new Error("Image upload failed");
+    const d = await res.json();
+    return d.path || null;
+  }
+
+  // ── Task submission (SSE stream) ───────────────────────────────────────────
+  async function handleTaskSubmit(e) {
+    e.preventDefault();
+    const prompt = promptInputEl.value.trim();
+    if (!prompt) return;
+    if (!selectedAgentId) { showToast("Select an agent first.", "error"); return; }
+
+    appendChatBubble("user", prompt);
+    promptInputEl.value = "";
+
+    // Reset monitor
+        thoughtStreamEl.innerHTML = "";
+        _monitorStep = 0;
+        _lineCount   = 1;
+        monitorStepsEl.textContent = "";
+        if (outputPanelEl) outputPanelEl.classList.add("hidden");
+        resetStages();
+        setMonitorStatus("running");
+
+    const submitBtn = taskFormEl.querySelector("button[type=submit]");
+    submitBtn.disabled = true;
+
+    try {
+      let imagePath = null;
+      if (selectedImageFile) {
+        appendMonitorLine("system", "Uploading image…");
+        imagePath = await uploadImageIfNeeded();
+        appendMonitorLine("system", `Image ready: ${imagePath}`);
+      }
+
+      const res = await fetch(`${apiBase}/api/agents/${selectedAgentId}/stream`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ prompt, image_path: imagePath }),
+      });
+      if (!res.ok) throw new Error(await res.text() || "Stream request failed");
+
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      let   buf     = "";
+      let   finalData = null;
+
+      outer: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+
+        const frames = buf.split("\n\n");
+        buf = frames.pop();
+
+        for (const frame of frames) {
+          let evtType = "system", evtData = "";
+          for (const line of frame.split("\n")) {
+            if (line.startsWith("event:")) evtType = line.slice(6).trim();
+            if (line.startsWith("data:"))  evtData  = line.slice(5).trim().replaceAll("\\n", "\n");
+          }
+          if (!evtData) continue;
+          if (evtType === "done") break outer;
+
+              _monitorStep++;
+              monitorStepsEl.textContent = `${_monitorStep} events`;
+
+              // Advance stage pipeline
+              if (evtType === "thought")     setStage("thinking");
+              else if (evtType === "action") setStage("acting");
+              else if (evtType === "observation") setStage("observing");
+
+              if (evtType === "final") {
+                try { finalData = JSON.parse(evtData); } catch {}
+                appendMonitorLine("final", finalData?.final_output ?? evtData);
+              } else {
+                appendMonitorLine(evtType, evtData);
+              }
+        }
+      }
+
+      if (finalData?.final_output) appendChatBubble("assistant", finalData.final_output);
+
+      lastArtifactPath = finalData?.artifact_path ?? null;
+      if (lastArtifactPath) {
+        downloadReportBtnEl.classList.remove("hidden");
+        downloadReportBtnEl.classList.add("inline-flex");
+        showToast("PDF report ready — click Download.", "success");
+      } else {
+        downloadReportBtnEl.classList.add("hidden");
+        downloadReportBtnEl.classList.remove("inline-flex");
+      }
+
+      setMonitorStatus("completed");
+      showToast("Task completed.", "success");
+
+    } catch (err) {
+      appendMonitorLine("error", String(err));
+      setMonitorStatus("error");
+      showToast("Error running agent task.", "error");
+    } finally {
+      submitBtn.disabled = false;
+      if (imageInputEl) { imageInputEl.value = ""; selectedImageFile = null; imageLabelEl.textContent = "Attach image"; }
+    }
+  }
+
+  // ── Agent modal open helpers ──────────────────────────────────────────────
+  function openCreateModal() {
+    agentEditIdEl.value = "";
+    agentModalTitleEl.textContent    = "Create New Agent";
+    agentModalSubtitleEl.textContent = "Configure a specialized Ollama-backed autonomous agent.";
+    agentModalSubmitBtnEl.textContent = "Create Agent";
+    agentDeleteBtnEl.classList.add("hidden");
+    agentModalFormEl.reset();
+    loadModels();
+    agentModalEl.classList.remove("hidden");
+  }
+
+  function openEditModal(agentId) {
+    const a = agents.find(x => x.id === agentId);
+    if (!a) return;
+
+    agentEditIdEl.value = agentId;
+    agentModalTitleEl.textContent    = `Edit Agent — ${a.name}`;
+    agentModalSubtitleEl.textContent = "Update this agent's configuration.";
+    agentModalSubmitBtnEl.textContent = "Save Changes";
+    agentDeleteBtnEl.classList.remove("hidden");
+
+    agentNameInputEl.value         = a.name || "";
+    agentRoleInputEl.value         = a.role || "";
+    agentBackstoryInputEl.value    = a.backstory || "";
+    agentInstructionsInputEl.value = a.backstory || ""; // backstory holds instructions
+
+    // Set model dropdown
+    loadModels().then(() => {
+      if (a.model_name && agentModelInputEl) {
+        // Try to select existing value; if not present, add it
+        let found = false;
+        for (const opt of agentModelInputEl.options) {
+          if (opt.value === a.model_name) { opt.selected = true; found = true; break; }
+        }
+        if (!found) {
+          const opt = document.createElement("option");
+          opt.value = a.model_name; opt.textContent = a.model_name; opt.selected = true;
+          agentModelInputEl.prepend(opt);
+        }
+      }
+    });
+
+    // Set tool checkboxes
+    let toolNames = [];
+    try { toolNames = JSON.parse(a.tools || "[]"); } catch {}
+    toolCheckboxes.forEach(cb => { cb.checked = toolNames.includes(cb.value); });
+
+    agentModalEl.classList.remove("hidden");
+  }
+
+  // ── Create / Update Agent ─────────────────────────────────────────────────
+  async function handleCreateAgentSubmit(e) {
+    e.preventDefault();
+    const editId          = agentEditIdEl.value;
+    const isEdit          = !!editId;
+    const name            = agentNameInputEl.value.trim();
+    const role_description = agentRoleInputEl.value.trim();
+    const model_name      = agentModelInputEl.value.trim();
+    const instructions    = agentInstructionsInputEl.value.trim();
+    const selected_tools  = Array.from(toolCheckboxes).filter(c => c.checked).map(c => c.value);
+
+    if (!name || !role_description || !model_name) {
+      showToast("Name, role, and model are required.", "error"); return;
+    }
+
+    try {
+      let agent;
+      if (isEdit) {
+        const res = await fetch(`${apiBase}/api/agents/${editId}`, {
+          method:  "PUT",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ name, model_name, role_description, instructions, selected_tools }),
+        });
+        if (!res.ok) throw new Error("Update agent failed");
+        agent = await res.json();
+        const idx = agents.findIndex(a => a.id === agent.id);
+        if (idx !== -1) agents[idx] = agent;
+        if (selectedAgentId === agent.id) selectedAgentMeta = agent;
+        showToast(`Agent "${agent.name}" updated.`, "success");
+      } else {
+        const res = await fetch(apiBase + "/agents", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ name, model_name, role_description, instructions, selected_tools }),
+        });
+        if (!res.ok) throw new Error("Create agent failed");
+        agent = await res.json();
+        agents.push(agent);
+        selectedAgentId   = agent.id;
+        selectedAgentMeta = agent;
+        showToast(`Agent "${agent.name}" created.`, "success");
+      }
+      renderAgents();
+      renderAgentPalette();
+      updateAgentHeader();
+      agentModalEl.classList.add("hidden");
+      agentModalFormEl.reset();
+    } catch (err) {
+      console.error(err);
+      showToast(isEdit ? "Could not update agent." : "Could not create agent.", "error");
+    }
+  }
+
+  async function handleDeleteAgent() {
+    const editId = agentEditIdEl.value;
+    if (!editId) return;
+    const a = agents.find(x => x.id == editId);
+    if (!confirm(`Delete agent "${a?.name}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`${apiBase}/api/agents/${editId}`, { method: "DELETE" });
+      if (!res.ok && res.status !== 204) throw new Error("Delete failed");
+      agents = agents.filter(x => x.id != editId);
+      if (selectedAgentId == editId) {
+        selectedAgentId   = agents[0]?.id ?? null;
+        selectedAgentMeta = agents[0] ?? null;
+      }
+      renderAgents();
+      renderAgentPalette();
+      updateAgentHeader();
+      agentModalEl.classList.add("hidden");
+      showToast(`Agent deleted.`, "success");
+    } catch (err) {
+      console.error(err);
+      showToast("Could not delete agent.", "error");
+    }
+  }
+
+  // ── Download report ────────────────────────────────────────────────────────
+  function handleDownloadReport() {
+    if (!lastArtifactPath) return;
+    window.open(`${apiBase}/api/reports/download?path=${encodeURIComponent(lastArtifactPath)}`, "_blank");
+  }
+
+  // ── View switching ─────────────────────────────────────────────────────────
+  function showChatView() {
+    chatViewEl.classList.remove("hidden");
+    workflowViewEl.classList.add("hidden");
+
+    sidebarChatLinkEl.className = "flex-1 flex items-center justify-center gap-1.5 text-[11px] font-medium py-1.5 rounded-md bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 transition-all";
+    sidebarWorkflowsLinkEl.className = "flex-1 flex items-center justify-center gap-1.5 text-[11px] font-medium py-1.5 rounded-md bg-transparent text-slate-400 border border-[#1e2d45] hover:border-slate-600 hover:text-slate-200 transition-all";
+  }
+
+  function showWorkflowView() {
+    chatViewEl.classList.add("hidden");
+    workflowViewEl.classList.remove("hidden");
+
+    sidebarWorkflowsLinkEl.className = "flex-1 flex items-center justify-center gap-1.5 text-[11px] font-medium py-1.5 rounded-md bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 transition-all";
+    sidebarChatLinkEl.className = "flex-1 flex items-center justify-center gap-1.5 text-[11px] font-medium py-1.5 rounded-md bg-transparent text-slate-400 border border-[#1e2d45] hover:border-slate-600 hover:text-slate-200 transition-all";
+
+    // Init Drawflow on first show (canvas must be visible first)
+    requestAnimationFrame(() => initWorkflowEditor());
+  }
+
+  // ── Drawflow ───────────────────────────────────────────────────────────────
+
+  const NODE_META = {
+    source: { icon: "🌐", badge: "node-badge-source",  badgeText: "trigger", color: "#3b82f6" },
+    tool:   { icon: "⚙️",  badge: "node-badge-tool",   badgeText: "action",  color: "#f59e0b" },
+    agent:  { icon: "🤖", badge: "node-badge-agent",   badgeText: "agent",   color: "#10b981" },
+    output: { icon: "📊", badge: "node-badge-output",  badgeText: "output",  color: "#a855f7" },
+  };
+
+  function buildNodeHtml(type, key, label, extraLines = []) {
+    const m = NODE_META[type] || { icon: "📦", badge: "node-badge-tool", badgeText: type, color: "#64748b" };
+    const title = label || `${key}`.replace(/_/g, " ");
+    const extras = extraLines.map(l =>
+      `<div style="font-size:10px;color:#94a3b8;margin-top:2px;">${l}</div>`
+    ).join("");
+    return `
+      <div style="padding:8px 12px;min-width:140px;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+          <span style="font-size:14px;line-height:1;">${m.icon}</span>
+          <span style="font-size:12px;font-weight:600;color:#e2e8f0;">${title}</span>
+        </div>
+        <span class="node-badge ${m.badge}">${m.badgeText}</span>
+        ${extras}
+      </div>`;
+  }
+
+  function initWorkflowEditor() {
+    if (workflowEditor || !workflowCanvasEl || typeof Drawflow === "undefined") return;
+
+    const editor = new Drawflow(workflowCanvasEl);
+    editor.reroute        = true;
+    editor.reroute_fix_curvature = true;
+    editor.start();
+    workflowEditor = editor;
+
+    // Wire up palette drag events (also called after new agents are added)
+    bindPaletteDrag();
+
+    workflowCanvasEl.addEventListener("dragover",  (ev) => ev.preventDefault());
+    workflowCanvasEl.addEventListener("drop", (ev) => {
+      ev.preventDefault();
+      const bounds = workflowCanvasEl.getBoundingClientRect();
+      let payload;
+      try { payload = JSON.parse(ev.dataTransfer.getData("application/json")); }
+      catch { return; }
+      if (!payload) return;
+
+      const { type, key, agentId, label } = payload;
+      const data  = { type, key, agent_id: agentId || null };
+      // source has 0 inputs; output has 0 outputs
+      const nIn  = type === "source" ? 0 : 1;
+      const nOut = type === "output" ? 0 : 1;
+      const html  = buildNodeHtml(type, key, label);
+
+      editor.addNode(`${type}-${key}`, nIn, nOut,
+        ev.clientX - bounds.left, ev.clientY - bounds.top,
+        `df-node-${type}`, data, html);
+    });
+
+    appendThoughtLine("Workflow editor ready. Drag nodes from the palette, then connect them.");
+  }
+
+  function bindPaletteDrag() {
+    document.querySelectorAll(".df-node-palette-item").forEach((el) => {
+      el.setAttribute("draggable", "true");
+      // Avoid double-binding
+      el.ondragstart = (ev) => {
+        ev.dataTransfer.setData("application/json", JSON.stringify({
+          type:    el.dataset.nodeType,
+          key:     el.dataset.nodeKey,
+          agentId: el.dataset.agentId || null,
+          label:   el.textContent.trim(),
+        }));
+      };
+    });
+  }
+
+  // ── Load example scenario ──────────────────────────────────────────────────
+  function loadExampleWorkflow() {
+    if (!workflowEditor) { showToast("Open the Workflows tab first.", "error"); return; }
+
+    // Confirm if canvas is not empty
+    const exp  = workflowEditor.export();
+    const home = exp?.drawflow?.Home?.data || {};
+    if (Object.keys(home).length > 0 &&
+        !confirm("Load the Tech News Briefing example? This will clear the current canvas.")) return;
+
+    workflowEditor.clear();
+
+    // Re-add URL value to the input
+    if (workflowUrlInputEl) workflowUrlInputEl.value = "https://techcrunch.com";
+
+    // Node positions
+    const gap = 220;
+    const y   = 160;
+
+    const n1 = workflowEditor.addNode(
+      "source-url_input", 0, 1, 60, y,
+      "df-node-source",
+      { type: "source", key: "url_input" },
+      buildNodeHtml("source", "url_input", "URL Input", ["techcrunch.com"])
+    );
+    const n2 = workflowEditor.addNode(
+      "tool-web_scraper", 1, 1, 60 + gap, y,
+      "df-node-tool",
+      { type: "tool", key: "web_scraper" },
+      buildNodeHtml("tool", "web_scraper", "Web Scraper", ["Fetches page text"])
+    );
+    const n3 = workflowEditor.addNode(
+      "agent-agent", 1, 1, 60 + gap * 2, y,
+      "df-node-agent",
+      { type: "agent", key: "agent", agent_id: selectedAgentId },
+      buildNodeHtml("agent", "agent", agents.find(a => a.id === selectedAgentId)?.name || "Agent", ["Summarises & analyses"])
+    );
+    const n4 = workflowEditor.addNode(
+      "output-display_result", 1, 0, 60 + gap * 3, y,
+      "df-node-output",
+      { type: "output", key: "display_result" },
+      buildNodeHtml("output", "display_result", "Display Result")
+    );
+
+    // Connect them
+    workflowEditor.addConnection(n1, n2, "output_1", "input_1");
+    workflowEditor.addConnection(n2, n3, "output_1", "input_1");
+    workflowEditor.addConnection(n3, n4, "output_1", "input_1");
+
+    showToast("Example workflow loaded — hit Run Workflow to execute.", "success");
+    appendThoughtLine("Example: URL Input → Web Scraper → Agent → Display Result");
+    appendThoughtLine("Edit the URL input above, then click Run Workflow.");
+  }
+
+  function buildWorkflowGraph() {
+    if (!workflowEditor || typeof workflowEditor.export !== "function") return null;
+    const exp  = workflowEditor.export();
+    const home = exp?.drawflow?.Home?.data;
+    if (!home) return { nodes: [], edges: [] };
+
+    const nodes = [], edges = [];
+    const urlVal = workflowUrlInputEl ? workflowUrlInputEl.value.trim() : "";
+
+    Object.values(home).forEach((node) => {
+      const id  = String(node.id);
+      const d   = node.data || {};
+      const cfg = {};
+      if (d.agent_id) cfg.agent_id = d.agent_id;
+      if (d.type === "source" && d.key === "url_input" && urlVal) cfg.url = urlVal;
+      nodes.push({ id, type: d.type || node.name || "", key: d.key || "", label: node.name || "", config: cfg });
+
+      Object.values(node.outputs || {}).forEach((out) => {
+        (out.connections || []).forEach((conn) => {
+          edges.push({ source: id, target: String(conn.node) });
+        });
+      });
+    });
+    return { nodes, edges };
+  }
+
+  async function handleRunWorkflow() {
+    if (!workflowEditor) { showToast("Workflow editor not ready.", "error"); return; }
+    const graph = buildWorkflowGraph();
+    if (!graph || !graph.nodes.length) { showToast("Add nodes before running.", "error"); return; }
+
+    thoughtStreamEl.innerHTML = "";
+    setMonitorStatus("running");
+    appendThoughtLine("Executing workflow…");
+
+    try {
+      const res = await fetch(apiBase + "/api/workflows/execute", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ graph }),
+      });
+      if (!res.ok) throw new Error(await res.text() || "Workflow execution failed");
+      const data = await res.json();
+
+      setMonitorStatus("completed");
+      appendThoughtLine("Workflow complete.");
+
+      const results = data.results || {};
+
+      // Find the display_result node output (key ends with output-display_result or type is output)
+      let displayOutput = null;
+      for (const [nodeId, val] of Object.entries(results)) {
+        // The node id for display_result nodes starts with a number but data.type would be "output"
+        // We'll just grab the last non-null string value as the display output
+        if (typeof val === "string" && val.trim()) displayOutput = val;
+      }
+
+      // Check for PDF
+      const pdfObj = Object.values(results).find(v => v && typeof v === "object" && v.pdf_path);
+      if (pdfObj) {
+        lastArtifactPath = pdfObj.pdf_path;
+        downloadReportBtnEl.classList.remove("hidden");
+        downloadReportBtnEl.classList.add("inline-flex");
+        showToast("PDF generated — click Download.", "success");
+        // Also show in output panel
+        if (displayOutput === null) displayOutput = `PDF Report generated: ${pdfObj.pdf_path}`;
+      }
+
+      // Render Display Result panel
+      if (displayOutput) renderOutputPanel(displayOutput);
+      else appendThoughtLine(JSON.stringify(results, null, 2));
+    } catch (err) {
+      appendMonitorLine("error", String(err));
+      setMonitorStatus("error");
+      showToast("Workflow error.", "error");
+    }
+  }
+
+  // ══════════════════════════  DOMContentLoaded  ════════════════════════════
+  document.addEventListener("DOMContentLoaded", () => {
+    // Resolve ALL DOM refs here — after full parse
+    agentListEl           = document.getElementById("agentList");
+    activeAgentNameEl     = document.getElementById("activeAgentName");
+    activeAgentRoleEl     = document.getElementById("activeAgentRole");
+    chatAreaEl            = document.getElementById("chatArea");
+    chatPlaceholderEl     = document.getElementById("chatPlaceholder");
+    thoughtStreamEl       = document.getElementById("thoughtStream");
+    monitorStatusEl       = document.getElementById("monitorStatus");
+    monitorStepsEl        = document.getElementById("monitorSteps");
+    statusDotEl           = document.getElementById("statusDot");
+    monitorPromptTextEl   = document.getElementById("monitorPromptText");
+    monitorProgressEl     = document.getElementById("monitorProgress");
+    outputPanelEl         = document.getElementById("outputPanel");
+    outputPanelBodyEl     = document.getElementById("outputPanelBody");
+    clearMonitorBtnEl     = document.getElementById("clearMonitorBtn");
+    promptInputEl         = document.getElementById("promptInput");
+    taskFormEl            = document.getElementById("taskForm");
+    createAgentBtnEl      = document.getElementById("createAgentBtn");
+    toastContainerEl      = document.getElementById("toastContainer");
+    downloadReportBtnEl   = document.getElementById("downloadReportBtn");
+    imageInputEl          = document.getElementById("imageInput");
+    imageLabelEl          = document.getElementById("imageLabel");
+    agentModalEl          = document.getElementById("agentModal");
+    agentModalFormEl      = document.getElementById("agentModalForm");
+    agentModalCloseEl     = document.getElementById("agentModalClose");
+    agentModalCancelBtnEl = document.getElementById("agentModalCancelBtn");
+    agentModalTitleEl     = document.getElementById("agentModalTitle");
+    agentModalSubtitleEl  = document.getElementById("agentModalSubtitle");
+    agentModalSubmitBtnEl = document.getElementById("agentModalSubmitBtn");
+    agentDeleteBtnEl      = document.getElementById("agentDeleteBtn");
+    agentEditIdEl         = document.getElementById("agentEditId");
+    agentNameInputEl      = document.getElementById("agentName");
+    agentRoleInputEl      = document.getElementById("agentRole");
+    agentModelInputEl     = document.getElementById("agentModel");
+    agentBackstoryInputEl = document.getElementById("agentBackstory");
+    agentInstructionsInputEl = document.getElementById("agentInstructions");
+    toolCheckboxes        = document.querySelectorAll("input[name='agentTools']");
+    sidebarChatLinkEl     = document.getElementById("sidebarChatLink");
+    sidebarWorkflowsLinkEl = document.getElementById("sidebarWorkflowsLink");
+    chatViewEl            = document.getElementById("chatView");
+    workflowViewEl        = document.getElementById("workflowView");
+    workflowCanvasEl      = document.getElementById("workflowCanvas");
+    agentNodesPaletteEl   = document.getElementById("agentNodesPalette");
+    workflowUrlInputEl    = document.getElementById("workflowUrlInput");
+    runWorkflowBtnEl      = document.getElementById("runWorkflowBtn");
+    const loadExampleBtnEl = document.getElementById("loadExampleBtn");
+    const clearCanvasBtnEl = document.getElementById("clearCanvasBtn");
+
+    // ── Bind events ────────────────────────────────────────────────────────
+    taskFormEl.addEventListener("submit", handleTaskSubmit);
+    clearMonitorBtnEl.addEventListener("click", clearMonitor);
+    downloadReportBtnEl.addEventListener("click", handleDownloadReport);
+
+    createAgentBtnEl.addEventListener("click", openCreateModal);
+    agentModalCloseEl.addEventListener("click",     () => agentModalEl.classList.add("hidden"));
+    agentModalCancelBtnEl.addEventListener("click", () => agentModalEl.classList.add("hidden"));
+    agentDeleteBtnEl.addEventListener("click", handleDeleteAgent);
+    agentModalFormEl.addEventListener("submit", handleCreateAgentSubmit);
+
+    imageInputEl.addEventListener("change", (e) => {
+      selectedImageFile = e.target.files?.[0] ?? null;
+      imageLabelEl.textContent = selectedImageFile ? selectedImageFile.name : "Attach image";
+    });
+
+    sidebarChatLinkEl.addEventListener("click",      showChatView);
+    sidebarWorkflowsLinkEl.addEventListener("click", showWorkflowView);
+    runWorkflowBtnEl.addEventListener("click",       handleRunWorkflow);
+    if (loadExampleBtnEl) loadExampleBtnEl.addEventListener("click", loadExampleWorkflow);
+    if (clearCanvasBtnEl) clearCanvasBtnEl.addEventListener("click", () => {
+      if (workflowEditor && confirm("Clear the canvas?")) workflowEditor.clear();
+    });
+
+    // Dismiss modal on backdrop click
+    agentModalEl.addEventListener("click", (e) => {
+      if (e.target === agentModalEl) agentModalEl.classList.add("hidden");
+    });
+
+    // ── Init ───────────────────────────────────────────────────────────────
+    loadAgents();
+    loadModels();
+    showChatView();
+  });
+</script>
+</body>
+</html>
