@@ -10,8 +10,6 @@
 AgentFlow Local is an **n8n-style visual workflow builder** for local LLMs.  
 You create specialised agents (Researcher, Translator, Vision Analyst, …), give them tools (Web Scraper, PDF Generator, Email Sender), and connect them into pipelines with a drag-and-drop canvas — no cloud, no API keys, no data leaving your machine.
 
-Designed for **academic research, policy analysis, and diplomatic use-cases** where data confidentiality is non-negotiable.
-
 ---
 
 ## Features
