@@ -1,4 +1,4 @@
-# <img src="assets/logo.png" width="500" align="right">
+# <img src="assets/logo.png" width="500" align="center">
 
 
 
