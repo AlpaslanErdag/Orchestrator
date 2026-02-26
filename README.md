@@ -1,4 +1,4 @@
-# <img src="assets/logo.png" width="500" align="center"> Loom (Local AI Orchestration)
+# <img src="assets/logo.png" width="500" align="center">
 
 
 
