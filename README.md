@@ -1,13 +1,13 @@
-# AgentFlow Local
+# LoomAI
 
 > A self-hosted, privacy-first AI agent orchestration platform powered by [Ollama](https://ollama.com).  
 > Build, run, and chain autonomous AI agents — entirely on your own machine.
 
 ---
 
-## What is AgentFlow Local?
+## What is LoomAI?
 
-AgentFlow Local is an **n8n-style visual workflow builder** for local LLMs.  
+LoomAI is an **n8n-style visual workflow builder** for local LLMs.  
 You create specialised agents (Researcher, Translator, Vision Analyst, …), give them tools (Web Scraper, PDF Generator, Email Sender), and connect them into pipelines with a drag-and-drop canvas — no cloud, no API keys, no data leaving your machine.
 
 ---
