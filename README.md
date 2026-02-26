@@ -1,3 +1,6 @@
+# <img src="assets/logo.png" width="50" align="center"> Loom (Local AI Orchestration)
+
+> A self-hosted, privacy-first AI agent orchestration platform...
 # LoomAI
 
 > A self-hosted, privacy-first AI agent orchestration platform powered by [Ollama](https://ollama.com).  
